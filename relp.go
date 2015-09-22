@@ -220,6 +220,10 @@ func (m Message) send(out io.Writer) (nn int, err error) {
 
 // Ack - Acknowledges a message
 func (m *Message) Ack() (err error) {
+	if m.Acked {
+		return fmt.Errorf("Called Ack on already-acknowledged message %d.", m.Txn)
+	}
+
 	if m.sourceConnection == nil {
 		// If the source connection is gone, we don't need to do any work.
 		return nil
