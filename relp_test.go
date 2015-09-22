@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewServer(t *testing.T) {
-	_, err := NewServer("127.0.0.1", 3333)
+	_, err := NewServer("127.0.0.1", 3333, true)
 	if err != nil {
 		t.Error("Error setting up listener:", err)
 		return
@@ -26,7 +26,7 @@ func TestNewServer(t *testing.T) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 
-	offerBytes := []byte("relp_version=0\nrelp_software=gorelp,0.0.1,https://git.stith.me/mstith/relp\ncommands=syslog")
+	offerBytes := []byte("relp_version=0\nrelp_software=gorelp,0.2.0,https://github.com/stith/gorelp\ncommands=syslog")
 	outString := fmt.Sprintf("1 open %d %s\n", len(offerBytes), offerBytes)
 	_, err = conn.Write([]byte(outString))
 	if err != nil {
@@ -78,8 +78,8 @@ func TestNewServer(t *testing.T) {
 	}
 	dataString := string(dataBytes[:dataLen])
 
-	if dataString != "200 OK\nrelp_version=0\nrelp_software=gorelp,0.0.1,https://git.stith.me/mstith/relp\ncommands=syslog" {
-		t.Error("Offer response != 200 OK\\nrelp_version=0\\nrelp_software=gorelp,0.0.1,https://git.stith.me/mstith/relp\\ncommands=syslog\n", dataString)
+	if dataString != "200 OK\nrelp_version=0\nrelp_software=gorelp,0.2.0,https://github.com/stith/gorelp\ncommands=syslog" {
+		t.Error("Offer response != 200 OK\\nrelp_version=0\\nrelp_software=gorelp,0.2.0,https://github.com/stith/gorelp\\ncommands=syslog\n", dataString)
 		return
 	}
 }
