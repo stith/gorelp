@@ -193,7 +193,7 @@ func NewClient(host string, port int) (client Client, err error) {
 	}
 
 	responseParts := strings.Split(offerResponse.Data, "\n")
-	if responseParts[0] != "200 OK" {
+	if !strings.HasPrefix(responseParts[0], "200 OK") {
 		err = fmt.Errorf("Server responded to offer with: %s", responseParts[0])
 	} else {
 		err = nil
