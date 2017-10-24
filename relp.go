@@ -179,6 +179,9 @@ func NewServer(host string, port int, autoAck bool) (server Server, err error) {
 // NewClient - Starts a new RELP client
 func NewClient(host string, port int) (client Client, err error) {
 	client.connection, err = net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
+	if err != nil {
+		return client, err
+	}
 
 	offer := Message{
 		Txn:     1,
