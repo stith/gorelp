@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const relpVersion = 0
@@ -176,9 +177,9 @@ func NewServer(host string, port int, autoAck bool) (server Server, err error) {
 	return server, nil
 }
 
-// NewClient - Starts a new RELP client
-func NewClient(host string, port int) (client Client, err error) {
-	client.connection, err = net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
+// NewClientTimeout - Starts a new RELP client with Dial timeout set
+func NewClientTimeout(host string, port int, timeout time.Duration) (client Client, err error) {
+	client.connection, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), timeout)
 	if err != nil {
 		return client, err
 	}
@@ -205,6 +206,11 @@ func NewClient(host string, port int) (client Client, err error) {
 	client.nextTxn = 2
 	// TODO: Parse the server's info/commands into the Client object
 	return client, err
+}
+
+// NewClient - Starts a new RELP client with Dial timeout set
+func NewClient(host string, port int) (client Client, err error) {
+	return NewClientTimeout(host, port, 0)
 }
 
 // Close - Stops listening for connections and closes the message channel
@@ -273,6 +279,11 @@ func (c *Client) SendMessage(msg Message) (err error) {
 	}
 
 	return err
+}
+
+// SetDeadline - make the next operation timeout if not completed before the given time
+func (c *Client) SetDeadline(t time.Time) error {
+	return c.connection.SetDeadline(t)
 }
 
 // Close - Closes the connection gracefully
