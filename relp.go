@@ -47,19 +47,25 @@ type Server struct {
 
 // Client - A client to a RELP server
 type Client struct {
+	host       string
+	port       int
+	timeout    time.Duration
 	connection net.Conn
+	reader     *bufio.Reader
 
 	nextTxn int
+
+	WillWaitAck bool
 }
 
-func readMessage(conn io.Reader) (message Message, err error) {
-	reader := bufio.NewReader(conn)
-
+func readMessage(reader *bufio.Reader) (message Message, err error) {
 	txn, err := reader.ReadString(' ')
+	if err == nil {
+		//fmt.Println("relp response OK ", txn)
+	}
 	if err == io.EOF {
 		// A graceful EOF means the client closed the connection. Hooray!
-		fmt.Println("Done!")
-		return
+		return message, err
 	} else if err != nil && strings.HasSuffix(err.Error(), "connection reset by peer") {
 		fmt.Println("Client rudely disconnected, but that's fine.")
 		return
@@ -67,6 +73,7 @@ func readMessage(conn io.Reader) (message Message, err error) {
 		log.Println("Error reading txn:", err, txn)
 		return
 	}
+
 	message.Txn, _ = strconv.Atoi(strings.TrimSpace(txn))
 
 	cmd, err := reader.ReadString(' ')
@@ -104,10 +111,11 @@ func readMessage(conn io.Reader) (message Message, err error) {
 }
 
 func handleConnection(conn net.Conn, server Server) {
+	reader := bufio.NewReader(conn)
 	defer conn.Close()
 
 	for {
-		message, _ := readMessage(conn)
+		message, _ := readMessage(reader)
 		message.sourceConnection = conn
 
 		response := Message{
@@ -177,23 +185,23 @@ func NewServer(host string, port int, autoAck bool) (server Server, err error) {
 	return server, nil
 }
 
-// NewClientTimeout - Starts a new RELP client with Dial timeout set
-func NewClientTimeout(host string, port int, timeout time.Duration) (client Client, err error) {
-	client.connection, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), timeout)
+func NewClientConnection(host string, port int, timeout time.Duration) (net.Conn, *bufio.Reader, error) {
+	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), timeout)
 	if err != nil {
-		return client, err
+		return connection, nil, err
 	}
+	reader := bufio.NewReader(connection)
 
 	offer := Message{
 		Txn:     1,
 		Command: "open",
 		Data:    fmt.Sprintf("relp_version=%d\nrelp_software=%s\ncommands=syslog", relpVersion, relpSoftware),
 	}
-	offer.send(client.connection)
+	offer.send(connection)
 
-	offerResponse, err := readMessage(client.connection)
+	offerResponse, err := readMessage(reader)
 	if err != nil {
-		return client, err
+		return connection, reader, err
 	}
 
 	responseParts := strings.Split(offerResponse.Data, "\n")
@@ -203,7 +211,22 @@ func NewClientTimeout(host string, port int, timeout time.Duration) (client Clie
 		err = nil
 	}
 
+	// TODO: Parse the server's info/commands into the Client object
+	return connection, reader, err
+}
+
+// NewClientTimeout - Starts a new RELP client with Dial timeout set
+func NewClientTimeout(host string, port int, timeout time.Duration) (client Client, err error) {
+	client.host = host
+	client.port = port
+	client.timeout = timeout
+	client.connection, client.reader, err = NewClientConnection(host, port, timeout)
+	if err != nil {
+		return client, err
+	}
+
 	client.nextTxn = 2
+	client.WillWaitAck = true
 	// TODO: Parse the server's info/commands into the Client object
 	return client, err
 }
@@ -264,26 +287,60 @@ func (c *Client) SendString(msg string) (err error) {
 	return err
 }
 
+func (c *Client) PackageString(msg string) Message {
+	return Message{
+		Txn:     c.nextTxn,
+		Command: "syslog",
+		Data:    msg,
+	}
+}
+
 // SendMessage - Sends a message using the client's connection
 func (c *Client) SendMessage(msg Message) (err error) {
+
 	c.nextTxn = c.nextTxn + 1
 	_, err = msg.send(c.connection)
+	if err != nil {
+    return err
+	}
 
-	// TODO: Make waiting for an ack optional
-	ack, err := readMessage(c.connection)
+	if c.WillWaitAck {
+		return c.WaitAck(&msg)
+	} else {
+		return nil
+	}
+}
+
+func (c *Client) WaitAck(msg *Message) (err error) {
+	ack, err := readMessage(c.reader)
+	if err != nil {
+		return err
+	}
+
 	if ack.Command != "rsp" {
 		return fmt.Errorf("Response to txn %d was %s: %s", msg.Txn, ack.Command, ack.Data)
 	}
+
 	if ack.Txn != msg.Txn {
 		return fmt.Errorf("Response txn to %d was %d", msg.Txn, ack.Txn)
 	}
 
-	return err
+	msg.Acked = true
+
+	return nil
 }
 
 // SetDeadline - make the next operation timeout if not completed before the given time
 func (c *Client) SetDeadline(t time.Time) error {
 	return c.connection.SetDeadline(t)
+}
+
+func (c *Client) SetReadDeadline(t time.Time) error {
+	return c.connection.SetReadDeadline(t)
+}
+
+func (c *Client) SetWriteDeadline(t time.Time) error {
+	return c.connection.SetWriteDeadline(t)
 }
 
 // Close - Closes the connection gracefully
@@ -294,4 +351,18 @@ func (c Client) Close() (err error) {
 	}
 	_, err = closeMessage.send(c.connection)
 	return
+}
+
+// Recreate - recreates connection
+func (c *Client) Recreate() error {
+	var err error
+
+	c.connection.Close()
+	c.connection, c.reader, err = NewClientConnection(c.host, c.port, c.timeout)
+
+	if err != nil {
+		log.Println("Error recreating client", err)
+	}
+
+	return err
 }
