@@ -52,7 +52,7 @@ type Client struct {
 	timeout    time.Duration
 	connection net.Conn
 	reader     *bufio.Reader
-	offerData  *map[string]string
+	offerData  map[string]string
 
 	nextTxn int
 
@@ -203,7 +203,7 @@ func NewClientTimeout(host string, port int, timeout time.Duration, offerData ma
 	client.timeout = timeout
 	client.nextTxn = 2
 	client.WillWaitAck = true
-  client.offerData = offerData
+	client.offerData = offerData
 
 	client.connection, client.reader, err = NewClientConnection(host, port, timeout)
 
@@ -211,15 +211,15 @@ func NewClientTimeout(host string, port int, timeout time.Duration, offerData ma
 		return client, err
 	}
 
-  err = c.Open()
+	err = client.Open()
 
 	// TODO: Parse the server's info/commands into the Client object
 	return client, err
 }
 
 // NewClient - Starts a new RELP client with Dial timeout set
-func NewClient(host string, port int) (client Client, err error) {
-	return NewClientTimeout(host, port, 0)
+func NewClient(host string, port int, offerData map[string]string) (client Client, err error) {
+	return NewClientTimeout(host, port, 0, offerData)
 }
 
 // Close - Stops listening for connections and closes the message channel
@@ -345,7 +345,7 @@ func (c *Client) Recreate() error {
 
 	c.connection.Close()
 	c.connection, c.reader, err = NewClientConnection(c.host, c.port, c.timeout)
-  c.Open()
+	c.Open()
 
 	if err != nil {
 		log.Println("Error recreating client", err)
@@ -355,14 +355,14 @@ func (c *Client) Recreate() error {
 }
 
 func (c *Client) Open() error {
-  offer := Message{
+	offer := Message{
 		Txn:     1,
 		Command: "open",
-    Data:    offerDataToString(c.offerData),
+		Data:    offerDataToString(c.offerData),
 	}
-	offer.send(connection)
+	offer.send(c.connection)
 
-	offerResponse, err := readMessage(reader)
+	offerResponse, err := readMessage(c.reader)
 	if err != nil {
 		return err
 	}
@@ -371,16 +371,16 @@ func (c *Client) Open() error {
 	if !strings.HasPrefix(responseParts[0], "200 OK") {
 		return fmt.Errorf("Server responded to offer with: %s", responseParts[0])
 	} else {
-    return nil
+		return nil
 	}
 }
 
 func offerDataToString(offerData map[string]string) string {
-  data = fmt.Sprintf("relp_version=%d\nrelp_software=%s\ncommands=syslog", relpVersion, relpSoftware)
+	data := fmt.Sprintf("relp_version=%d\nrelp_software=%s\ncommands=syslog", relpVersion, relpSoftware)
 
-  for k, v := range offerData {
-    data += fmt.Sprintf("\n%s=%s", k, v)
-  }
+	for k, v := range offerData {
+		data += fmt.Sprintf("\n%s=%s", k, v)
+	}
 
-  return data
+	return data
 }
