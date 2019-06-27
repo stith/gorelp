@@ -61,9 +61,7 @@ type Client struct {
 
 func readMessage(reader *bufio.Reader) (message Message, err error) {
 	txn, err := reader.ReadString(' ')
-	if err == nil {
-		//fmt.Println("relp response OK ", txn)
-	}
+
 	if err == io.EOF {
 		// A graceful EOF means the client closed the connection. Hooray!
 		return message, err
