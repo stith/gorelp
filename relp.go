@@ -52,6 +52,7 @@ type Client struct {
 	timeout    time.Duration
 	connection net.Conn
 	reader     *bufio.Reader
+	offerData  map[string]string
 
 	nextTxn int
 
@@ -60,9 +61,7 @@ type Client struct {
 
 func readMessage(reader *bufio.Reader) (message Message, err error) {
 	txn, err := reader.ReadString(' ')
-	if err == nil {
-		//fmt.Println("relp response OK ", txn)
-	}
+
 	if err == io.EOF {
 		// A graceful EOF means the client closed the connection. Hooray!
 		return message, err
@@ -192,48 +191,33 @@ func NewClientConnection(host string, port int, timeout time.Duration) (net.Conn
 	}
 	reader := bufio.NewReader(connection)
 
-	offer := Message{
-		Txn:     1,
-		Command: "open",
-		Data:    fmt.Sprintf("relp_version=%d\nrelp_software=%s\ncommands=syslog", relpVersion, relpSoftware),
-	}
-	offer.send(connection)
-
-	offerResponse, err := readMessage(reader)
-	if err != nil {
-		return connection, reader, err
-	}
-
-	responseParts := strings.Split(offerResponse.Data, "\n")
-	if !strings.HasPrefix(responseParts[0], "200 OK") {
-		err = fmt.Errorf("Server responded to offer with: %s", responseParts[0])
-	} else {
-		err = nil
-	}
-
-	// TODO: Parse the server's info/commands into the Client object
 	return connection, reader, err
 }
 
 // NewClientTimeout - Starts a new RELP client with Dial timeout set
-func NewClientTimeout(host string, port int, timeout time.Duration) (client Client, err error) {
+func NewClientTimeout(host string, port int, timeout time.Duration, offerData map[string]string) (client Client, err error) {
 	client.host = host
 	client.port = port
 	client.timeout = timeout
+	client.nextTxn = 2
+	client.WillWaitAck = true
+	client.offerData = offerData
+
 	client.connection, client.reader, err = NewClientConnection(host, port, timeout)
+
 	if err != nil {
 		return client, err
 	}
 
-	client.nextTxn = 2
-	client.WillWaitAck = true
+	err = client.Open()
+
 	// TODO: Parse the server's info/commands into the Client object
 	return client, err
 }
 
 // NewClient - Starts a new RELP client with Dial timeout set
-func NewClient(host string, port int) (client Client, err error) {
-	return NewClientTimeout(host, port, 0)
+func NewClient(host string, port int, offerData map[string]string) (client Client, err error) {
+	return NewClientTimeout(host, port, 0, offerData)
 }
 
 // Close - Stops listening for connections and closes the message channel
@@ -301,7 +285,7 @@ func (c *Client) SendMessage(msg Message) (err error) {
 	c.nextTxn = c.nextTxn + 1
 	_, err = msg.send(c.connection)
 	if err != nil {
-    return err
+		return err
 	}
 
 	if c.WillWaitAck {
@@ -359,10 +343,42 @@ func (c *Client) Recreate() error {
 
 	c.connection.Close()
 	c.connection, c.reader, err = NewClientConnection(c.host, c.port, c.timeout)
+	c.Open()
 
 	if err != nil {
 		log.Println("Error recreating client", err)
 	}
 
 	return err
+}
+
+func (c *Client) Open() error {
+	offer := Message{
+		Txn:     1,
+		Command: "open",
+		Data:    offerDataToString(c.offerData),
+	}
+	offer.send(c.connection)
+
+	offerResponse, err := readMessage(c.reader)
+	if err != nil {
+		return err
+	}
+
+	responseParts := strings.Split(offerResponse.Data, "\n")
+	if !strings.HasPrefix(responseParts[0], "200 OK") {
+		return fmt.Errorf("Server responded to offer with: %s", responseParts[0])
+	} else {
+		return nil
+	}
+}
+
+func offerDataToString(offerData map[string]string) string {
+	data := fmt.Sprintf("relp_version=%d\nrelp_software=%s\ncommands=syslog", relpVersion, relpSoftware)
+
+	for k, v := range offerData {
+		data += fmt.Sprintf("\n%s=%s", k, v)
+	}
+
+	return data
 }
