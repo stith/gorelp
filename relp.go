@@ -187,7 +187,7 @@ func NewServer(host string, port int, autoAck bool) (server Server, err error) {
 func NewClientConnection(host string, port int, timeout time.Duration) (net.Conn, *bufio.Reader, error) {
 	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), timeout)
 	if err != nil {
-		return connection, nil, err
+		connection = FailedConn{}
 	}
 	reader := bufio.NewReader(connection)
 
