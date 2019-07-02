@@ -66,10 +66,8 @@ func readMessage(reader *bufio.Reader) (message Message, err error) {
 		// A graceful EOF means the client closed the connection. Hooray!
 		return message, err
 	} else if err != nil && strings.HasSuffix(err.Error(), "connection reset by peer") {
-		fmt.Println("Client rudely disconnected, but that's fine.")
 		return
 	} else if err != nil {
-		log.Println("Error reading txn:", err, txn)
 		return
 	}
 

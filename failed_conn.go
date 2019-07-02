@@ -8,14 +8,14 @@ import (
 
 type FailedConn struct{}
 
-var failedConnError = errors.New("this is a failed connection")
+var FailedConnError = errors.New("this is a failed connection")
 
 func (f FailedConn) Read(b []byte) (n int, err error) {
-	return 0, failedConnError
+	return 0, FailedConnError
 }
 
 func (f FailedConn) Write(b []byte) (n int, err error) {
-	return 0, failedConnError
+	return 0, FailedConnError
 }
 
 func (f FailedConn) Close() error {
@@ -31,13 +31,13 @@ func (f FailedConn) RemoteAddr() net.Addr {
 }
 
 func (f FailedConn) SetDeadline(t time.Time) error {
-	return failedConnError
+	return FailedConnError
 }
 
 func (f FailedConn) SetReadDeadline(t time.Time) error {
-	return failedConnError
+	return FailedConnError
 }
 
 func (f FailedConn) SetWriteDeadline(t time.Time) error {
-	return failedConnError
+	return FailedConnError
 }
