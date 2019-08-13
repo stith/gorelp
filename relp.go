@@ -85,9 +85,14 @@ func (m Message) send(buffer *bytes.Buffer, writer io.Writer) (int, error) {
 	buffer.WriteByte(' ')
 	buffer.WriteString(m.Command)
 	buffer.WriteByte(' ')
+
 	buffer.WriteString(strconv.Itoa(len(m.Data)))
-	buffer.WriteByte(' ')
-	buffer.Write(m.Data)
+
+	if len(m.Data) > 0 {
+		buffer.WriteByte(' ')
+		buffer.Write(m.Data)
+	}
+
 	buffer.WriteByte('\n')
 
 	return writer.Write(buffer.Bytes())
