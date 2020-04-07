@@ -3,6 +3,7 @@ package relp
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -24,10 +25,23 @@ type Client struct {
 	nextTxn int
 
 	WillWaitAck bool
+	secure      bool
 }
 
-func NewClientConnection(host string, port int, timeout time.Duration) (net.Conn, error) {
-	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), timeout)
+func NewClientConnection(host string, port int, timeout time.Duration, secure bool) (net.Conn, error) {
+	address := fmt.Sprintf("%s:%d", host, port)
+
+	var err error
+	var connection net.Conn
+
+	dialer := &net.Dialer{Timeout: timeout}
+
+	if secure {
+		connection, err = tls.DialWithDialer(dialer, "tcp", address, &tls.Config{})
+	} else {
+		connection, err = dialer.Dial("tcp", address)
+	}
+
 	if err != nil {
 		connection = FailedConn{}
 	}
@@ -35,7 +49,7 @@ func NewClientConnection(host string, port int, timeout time.Duration) (net.Conn
 }
 
 // NewClientTimeout - Starts a new RELP client with Dial timeout set
-func NewClientTimeout(host string, port int, timeout time.Duration, offerData map[string]string) (client Client, err error) {
+func NewClientTimeout(host string, port int, timeout time.Duration, secure bool, offerData map[string]string) (client Client, err error) {
 	client.host = host
 	client.port = port
 	client.timeout = timeout
@@ -43,8 +57,9 @@ func NewClientTimeout(host string, port int, timeout time.Duration, offerData ma
 	client.WillWaitAck = true
 	client.offerData = offerDataBytes(offerData)
 	client.buffer = new(bytes.Buffer)
+	client.secure = secure
 
-	client.connection, err = NewClientConnection(host, port, timeout)
+	client.connection, err = NewClientConnection(host, port, timeout, secure)
 	client.reader = bufio.NewReader(client.connection)
 
 	if err != nil {
@@ -58,8 +73,8 @@ func NewClientTimeout(host string, port int, timeout time.Duration, offerData ma
 }
 
 // NewClient - Starts a new RELP client with Dial timeout set
-func NewClient(host string, port int, offerData map[string]string) (client Client, err error) {
-	return NewClientTimeout(host, port, 0, offerData)
+func NewClient(host string, port int, secure bool, offerData map[string]string) (client Client, err error) {
+	return NewClientTimeout(host, port, 0, secure, offerData)
 }
 
 // SendMessage - Sends a message using the client's connection
@@ -111,7 +126,7 @@ func (c *Client) Recreate() error {
 	var err error
 
 	c.connection.Close()
-	c.connection, err = NewClientConnection(c.host, c.port, c.timeout)
+	c.connection, err = NewClientConnection(c.host, c.port, c.timeout, c.secure)
 	c.reader = bufio.NewReader(c.connection)
 	c.Open()
 
